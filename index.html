@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Site Stamp Camera</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{--y:#f5b800;--bg:#000;--panel:#161616;--txt:#fff;--mut:#aaa;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Thai",sans-serif;overflow:hidden}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column}
+  #stage{position:relative;flex:1;background:#111;overflow:hidden}
+  #video,#shot{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#111}
+  #shot{display:none}
+  #idle{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--mut);font-size:15px;text-align:center;padding:24px 24px 120px}
+  #idle b{color:#fff;font-size:18px}
+  /* overlay strip */
+  #ov{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:8px 8px;color:#fff;font-size:15px;line-height:1.5}
+  .col{display:flex;flex-direction:column}
+  .col.r{align-items:flex-end;text-align:right}
+  .f{cursor:pointer;user-select:none;white-space:nowrap}
+  .f:active{outline:2px solid var(--y)}
+  .row{display:flex;gap:10px}
+  .b{font-weight:800;font-size:17px}
+  #ttl{border:2px solid var(--y);padding:12px 14px;min-width:120px;max-width:44vw;text-align:center;font-size:16px;white-space:normal}
+  #tm{font-size:13px;color:#eee}
+  /* bottom bar */
+  #bar{height:92px;background:var(--panel);display:flex;align-items:center;justify-content:space-between;padding:0 22px;padding-bottom:env(safe-area-inset-bottom)}
+  .btn{background:#2a2a2a;color:#fff;border:0;border-radius:12px;padding:10px 14px;font-size:14px;font-weight:600}
+  .btn.y{background:var(--y);color:#1a1a1a}
+  #shut{width:66px;height:66px;border-radius:50%;background:#fff;border:5px solid #999;padding:0}
+  #shut:active{transform:scale(.93)}
+  /* editor */
+  #ed{position:absolute;left:0;right:0;bottom:0;background:#1d1d1d;border-top:1px solid #333;padding:12px 14px 14px;display:none;flex-direction:column;gap:10px;z-index:5}
+  #ed.on{display:flex}
+  #ed .erow{display:flex;gap:8px}
+  #ed input{flex:1;font-size:18px;padding:10px 12px;border-radius:10px;border:1px solid #444;background:#111;color:#fff;min-width:0}
+  #chips{display:flex;flex-wrap:wrap;gap:6px;max-height:96px;overflow:auto}
+  .chip{background:#333;color:#fff;border:0;border-radius:999px;padding:7px 13px;font-size:14px}
+  .chip.del{background:#5a2222}
+  #edlbl{font-size:12px;color:var(--mut)}
+  #rev{display:none;gap:10px;align-items:center;justify-content:space-between;width:100%}
+  #toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);padding:8px 14px;border-radius:999px;font-size:13px;display:none;z-index:9;white-space:nowrap}
+  #file{display:none}
+  #top{position:absolute;top:0;left:0;right:0;padding:calc(8px + env(safe-area-inset-top)) 10px 8px;display:flex;justify-content:space-between;pointer-events:none}
+  #top button{pointer-events:auto}
+  .sm{background:rgba(0,0,0,.5);color:#fff;border:0;border-radius:999px;padding:6px 12px;font-size:13px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <img id="shot" alt="">
+    <div id="idle"><b>Site Stamp Camera</b><span>แตะข้อความด้านล่างเพื่อแก้ แล้วกดชัตเตอร์</span></div>
+    <div id="top">
+      <button class="sm" id="btnTorch" style="display:none">⚡ ไฟ</button>
+      <span></span>
+      <button class="sm" id="btnFlip" style="display:none">🔄</button>
+    </div>
+    <div id="ov">
+      <div class="col">
+        <div class="f" data-f="cat">Category : <span id="v-cat"></span></div>
+        <div class="f" data-f="pri">Priority : <span id="v-pri"></span></div>
+      </div>
+      <div class="f" id="ttl" data-f="title"></div>
+      <div class="col r">
+        <div class="f b" data-f="room">Room : <span id="v-room"></span></div>
+        <div class="row"><span class="f" data-f="floor">Floor:<span id="v-floor"></span></span><span class="f" data-f="bld">Building : <span id="v-bld"></span></span></div>
+        <div id="tm"></div>
+      </div>
+    </div>
+    <div id="toast"></div>
+    <div id="ed">
+      <div id="edlbl"></div>
+      <div class="erow"><input id="edin" autocomplete="off"><button class="btn y" id="edok">ตกลง</button><button class="btn" id="edx">✕</button></div>
+      <div id="chips"></div>
+    </div>
+  </div>
+  <div id="bar">
+    <div id="cap" style="display:flex;width:100%;align-items:center;justify-content:space-between">
+      <span style="width:80px"></span>
+      <button id="shut" title="ถ่าย"></button>
+      <span style="width:80px"></span>
+    </div>
+    <div id="rev">
+      <button class="btn" id="btnRetake">ถ่ายใหม่</button>
+      <button class="btn" id="btnShare" style="display:none;font-size:15px;padding:14px">📤 แชร์</button>
+      <button class="btn y" id="btnSave" style="flex:1;font-size:16px;padding:14px">💾 บันทึกรูป</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="file" accept="image/*" capture="environment">
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const LS=(k,v)=>{try{if(v===undefined)return JSON.parse(localStorage.getItem(k));localStorage.setItem(k,JSON.stringify(v));}catch(e){return null}};
+
+const LABEL={title:'หัวข้อ / Defect',cat:'Category',pri:'Priority',room:'Room',floor:'Floor',bld:'Building'};
+let vals=Object.assign({title:'หลอดไฟไม่ติด',cat:'EE',pri:'Major',room:'151',floor:'1',bld:'G1S'},LS('vals2')||{});
+let recent=Object.assign({
+  cat:['EE','ME','SN','ARCH','CIVIL','FF&E','MEP'],
+  pri:['Critical','Major','Minor'],
+  bld:['G1S','G2S','G3S','South Wing'],
+  floor:['1','2','3','4'],
+  title:['หลอดไฟไม่ติด','ฝ้าเปื้อน','สีถลอก','ซิลิโคนไม่เรียบร้อย','รอยรั่ว']
+},LS('recent2')||{});
+const saveState=()=>{LS('vals2',vals);LS('recent2',recent)};
+
+const EN_D=['Su','Mo','Tu','We','Th','Fr','Sa'];
+const p2=n=>String(n).padStart(2,'0');
+function stamp(d=new Date()){return `${EN_D[d.getDay()]}, ${p2(d.getDate())}/${p2(d.getMonth()+1)}/${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}`}
+function fname(d=new Date()){const r=(vals.room||'').replace(/[^\w\-]/g,'');return `${r?r+'_':''}${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}.jpg`}
+
+function render(){
+  for(const k of ['cat','pri','room','floor','bld']){$('#v-'+k).textContent=vals[k]||'—'}
+  $('#ttl').textContent=vals.title||'แตะเพื่อใส่หัวข้อ';
+  $('#tm').textContent=stamp();
+}
+setInterval(()=>{if(!reviewing)$('#tm').textContent=stamp()},10000);
+document.querySelectorAll('.f').forEach(el=>el.onclick=e=>{e.stopPropagation();openEd(el.dataset.f)});
+
+// ---------- editor ----------
+const ed=$('#ed'),edin=$('#edin'),chips=$('#chips');
+let edId=null;
+function openEd(id){
+  edId=id;$('#edlbl').textContent='แก้ไข: '+LABEL[id];
+  edin.value=vals[id]||'';edin.inputMode=(id==='floor'||id==='room')?'numeric':'text';
+  ed.classList.add('on');renderChips();setTimeout(()=>{edin.focus();edin.select()},50);
+}
+function renderChips(){
+  chips.innerHTML='';
+  (recent[edId]||[]).forEach(v=>{
+    const b=document.createElement('button');b.className='chip';b.textContent=v;
+    b.onclick=()=>{edin.value=v;commit()};
+    b.oncontextmenu=e=>{e.preventDefault();recent[edId]=recent[edId].filter(x=>x!==v);saveState();renderChips()};
+    chips.appendChild(b);
+  });
+  const b=document.createElement('button');b.className='chip del';b.textContent='ล้าง';b.onclick=()=>{edin.value='';commit()};chips.appendChild(b);
+}
+function commit(){
+  const v=edin.value.trim();vals[edId]=v;
+  if(v)recent[edId]=[v,...(recent[edId]||[]).filter(x=>x!==v)].slice(0,12);
+  saveState();closeEd();render();
+}
+function closeEd(){ed.classList.remove('on');edId=null}
+$('#edok').onclick=commit;$('#edx').onclick=closeEd;
+edin.onkeydown=e=>{if(e.key==='Enter')commit();if(e.key==='Escape')closeEd()};
+
+// ---------- camera ----------
+const video=$('#video'),shotImg=$('#shot'),idle=$('#idle');
+let stream=null,track=null,facing='environment',live=false,reviewing=false,lastBlob=null;
+async function startCam(){
+  try{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw 0;
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:1920},height:{ideal:1080}},audio:false});
+    video.srcObject=stream;track=stream.getVideoTracks()[0];live=true;idle.style.display='none';
+    $('#btnFlip').style.display='';
+    const c=track.getCapabilities?track.getCapabilities():{};
+    if(c.torch)$('#btnTorch').style.display='';
+  }catch(e){live=false;idle.style.display='';}
+}
+let torch=false;
+$('#btnTorch').onclick=async()=>{torch=!torch;try{await track.applyConstraints({advanced:[{torch}]})}catch(e){}};
+$('#btnFlip').onclick=()=>{facing=facing==='environment'?'user':'environment';stopCam();startCam()};
+function stopCam(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+
+// ---------- capture ----------
+const file=$('#file');
+$('#shut').onclick=()=>{ if(live)snapLive(); else file.click(); };
+file.onchange=async()=>{const f=file.files[0];file.value='';if(!f)return;
+  let bmp;try{bmp=await createImageBitmap(f,{imageOrientation:'from-image'})}catch(e){bmp=await loadImg(f)}
+  compose(bmp,bmp.width,bmp.height);
+};
+function loadImg(f){return new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.src=URL.createObjectURL(f)})}
+function snapLive(){const w=video.videoWidth,h=video.videoHeight;if(!w)return;compose(video,w,h)}
+function compose(src,w,h){
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+  x.drawImage(src,0,0,w,h);drawOverlay(x,w,h);
+  c.toBlob(b=>{lastBlob=b;shotImg.src=URL.createObjectURL(b);showReview(true)},'image/jpeg',0.92);
+}
+
+// ---- overlay burned into image: same layout as on-screen strip ----
+function drawOverlay(x,W,H){
+  const u=W/100;                      // 1u = 1% of width
+  const F='system-ui,"Segoe UI",Roboto,"Noto Sans Thai",sans-serif';
+  const fs=2.6*u, fsB=2.9*u, fsS=2.2*u, lh=1.55, pad=1.4*u;
+  const stripH=3*fs*lh+2*pad;
+  const y0=H-stripH;
+  x.fillStyle='rgba(0,0,0,0.45)';x.fillRect(0,y0,W,stripH);
+  x.textBaseline='middle';x.fillStyle='#fff';
+
+  // left column
+  x.textAlign='left';x.font=`500 ${fs}px ${F}`;
+  const ly=y0+stripH/2;
+  x.fillText(`Category : ${vals.cat||'—'}`,pad,ly-fs*lh*0.5);
+  x.fillText(`Priority : ${vals.pri||'—'}`,pad,ly+fs*lh*0.5);
+  const leftW=Math.max(x.measureText(`Category : ${vals.cat||'—'}`).width,x.measureText(`Priority : ${vals.pri||'—'}`).width)+2*pad;
+
+  // right column
+  x.textAlign='right';const rx=W-pad;
+  x.font=`800 ${fsB}px ${F}`;x.fillText(`Room : ${vals.room||'—'}`,rx,ly-fs*lh);
+  x.font=`500 ${fs}px ${F}`;x.fillText(`Floor:${vals.floor||'—'}    Building : ${vals.bld||'—'}`,rx,ly);
+  const rightW=Math.max(x.measureText(`Floor:${vals.floor||'—'}    Building : ${vals.bld||'—'}`).width, x.measureText(`Room : ${vals.room||'—'}`).width)+2*pad;
+  x.font=`500 ${fsS}px ${F}`;x.fillText(stamp(),rx,ly+fs*lh);
+
+  // center yellow box
+  const avail=W-leftW-rightW-2*pad;
+  const bw=Math.max(avail,W*0.28), bh=stripH-2*pad;
+  const bx=leftW+pad+(avail-bw)/2, by=y0+pad;
+  x.strokeStyle='#f5b800';x.lineWidth=0.35*u;x.strokeRect(bx,by,bw,bh);
+  x.textAlign='center';x.font=`600 ${fs}px ${F}`;
+  const t=vals.title||'';
+  // wrap to 2 lines if needed
+  const lines=wrap(x,t,bw-2*pad,2);
+  const lsum=(lines.length-1)*fs*lh;
+  lines.forEach((ln,i)=>x.fillText(ln,bx+bw/2,by+bh/2-lsum/2+i*fs*lh));
+}
+function wrap(x,t,maxW,maxLines){
+  if(x.measureText(t).width<=maxW)return [t];
+  const sep=t.includes(' ')?' ':'';const words=sep?t.split(' '):[...t];
+  const out=[];let cur='';let i=0;
+  for(;i<words.length;i++){
+    const n=cur?cur+sep+words[i]:words[i];
+    if(x.measureText(n).width>maxW&&cur){out.push(cur);cur=words[i];if(out.length===maxLines-1)break}
+    else cur=n;
+  }
+  let last=i<words.length?words.slice(i).join(sep):cur;
+  if(x.measureText(last).width>maxW){while(x.measureText(last+'…').width>maxW&&last.length>1)last=last.slice(0,-1);last+='…'}
+  out.push(last);return out;
+}
+
+// ---------- review / save ----------
+function showReview(on){
+  reviewing=on;
+  shotImg.style.display=on?'block':'none';
+  $('#ov').style.display=on?'none':'';
+  $('#cap').style.display=on?'none':'flex';$('#rev').style.display=on?'flex':'none';
+  idle.style.display=(on||live)?'none':'';
+}
+$('#btnRetake').onclick=()=>showReview(false);
+let dl=null;window.claude&&claude.use&&claude.use('downloads').then(d=>{dl=d});
+const canShare=!!(navigator.canShare&&navigator.share);
+if(canShare)$('#btnShare').style.display='';
+$('#btnShare').onclick=async()=>{
+  if(!lastBlob)return;const n=fname();const f=new File([lastBlob],n,{type:'image/jpeg'});
+  try{if(navigator.canShare({files:[f]})){await navigator.share({files:[f],title:n});return}}catch(e){if(e&&e.name==='AbortError')return}
+  fallback(n);
+};
+$('#btnSave').onclick=async()=>{
+  if(!lastBlob)return;const n=fname();
+  if(dl){try{await dl.save({filename:n,data:lastBlob});toast('บันทึกแล้ว: '+n);showReview(false)}
+         catch(e){if(e&&e.code!=='declined')fallback(n)}}
+  else fallback(n);
+};
+function fallback(n){
+  try{const a=document.createElement('a');a.href=URL.createObjectURL(lastBlob);a.download=n;document.body.appendChild(a);a.click();a.remove();toast('บันทึกลง Downloads: '+n,3000);setTimeout(()=>showReview(false),600)}catch(e){toast('กดค้างที่รูปแล้วเลือก "บันทึกรูป"',4000)}
+}
+if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(()=>{})}
+let tt;function toast(m,ms=2000){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(tt);tt=setTimeout(()=>t.style.display='none',ms)}
+
+render();startCam();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopCam();else if(!reviewing)startCam()});
+})();
+</script>
+</body>
+</html>
