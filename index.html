@@ -28,7 +28,10 @@
   #frame{container-type:inline-size;touch-action:none}
   #video{transform-origin:center center;will-change:transform}
   #zb{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.6);color:#fff;font-weight:700;font-size:20px;padding:8px 16px;border-radius:999px;display:none;pointer-events:none;z-index:4}
-  #zbtn{min-width:52px}
+  #zg{display:none;gap:8px;align-items:center;pointer-events:auto}
+  #zg button{height:46px;background:rgba(0,0,0,.6);touch-action:manipulation;user-select:none}
+  .zb2{width:46px;font-size:26px;font-weight:700;padding:0;line-height:1}
+  #zbtn{min-width:62px;font-size:15px;font-weight:700}
   #ov{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:1.4cqw;padding:1.4cqw;color:#fff;font-size:max(2.6cqw,12px);line-height:1.55}
   .col{display:flex;flex-direction:column}
   .col.r{align-items:flex-end;text-align:right}
@@ -71,7 +74,7 @@
     <div id="idle"><b>Site Stamp Camera</b><span>ภาพออกเป็น 4:3 แนวนอนเสมอ<br>แตะข้อความด้านล่างเพื่อแก้ แล้วกดชัตเตอร์</span></div>
     <div id="top">
       <button class="sm" id="btnTorch" style="display:none">⚡ ไฟ</button>
-      <button class="sm" id="zbtn">1.0x</button>
+      <span id="zg"><button class="sm zb2" id="zout">−</button><button class="sm" id="zbtn">1.0x</button><button class="sm zb2" id="zin">+</button></span>
       <button class="sm" id="btnFlip" style="display:none">🔄</button>
     </div>
     <div id="ov">
@@ -192,12 +195,12 @@ function initZoom(){
   const c=track&&track.getCapabilities?track.getCapabilities():{};
   if(c.zoom&&c.zoom.max>c.zoom.min){hwZoom=true;zMin=Math.max(1,c.zoom.min);zMax=Math.min(c.zoom.max,10);
     const cur=(track.getSettings().zoom)||zMin;zoom=Math.max(zMin,cur);}
-  showZoom(false);
+  showZoom(false);$('#zg').style.display='flex';
 }
 function setZoom(z){
   zoom=Math.min(zMax,Math.max(zMin,z));
   if(hwZoom){zWant=zoom;if(!zPending){zPending=true;
-      track.applyConstraints({advanced:[{zoom:zWant}]}).catch(()=>{hwZoom=false;video.style.transform=`scale(${zoom})`}).finally(()=>{zPending=false;if(zWant!==zoom)setZoom(zoom)})}}
+      track.applyConstraints({advanced:[{zoom:zWant}]}).then(()=>{const g=track.getSettings().zoom;if(g===undefined||(zWant>zMin+0.5&&g<=zMin+0.01)){hwZoom=false;zMax=5;zoom=Math.min(zoom,5);video.style.transform=`scale(${zoom})`}}).catch(()=>{hwZoom=false;video.style.transform=`scale(${zoom})`}).finally(()=>{zPending=false;if(zWant!==zoom)setZoom(zoom)})}}
   else video.style.transform=zoom>1.001?`scale(${zoom})`:'';
   showZoom(true);
 }
@@ -206,6 +209,16 @@ let zbT;function showZoom(flash){
   if(flash){const b=$('#zb');b.textContent=t;b.style.display='block';clearTimeout(zbT);zbT=setTimeout(()=>b.style.display='none',700)}
 }
 $('#zbtn').onclick=()=>setZoom(zMin);
+// +/- buttons: tap = one step, hold = continuous
+function holdBtn(el,dir){
+  let t1,t2;const stop=()=>{clearTimeout(t1);clearInterval(t2)};
+  el.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();stop();
+    setZoom(dir>0?zoom*1.25:zoom/1.25);
+    t1=setTimeout(()=>{t2=setInterval(()=>setZoom(dir>0?zoom*1.05:zoom/1.05),60)},350)});
+  ['pointerup','pointerleave','pointercancel'].forEach(n=>el.addEventListener(n,stop));
+  el.addEventListener('contextmenu',e=>e.preventDefault());
+}
+holdBtn($('#zin'),1);holdBtn($('#zout'),-1);
 (()=>{
   const fr=$('#frame');let d0=0,z0=1;
   const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
